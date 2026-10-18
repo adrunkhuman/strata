@@ -52,10 +52,10 @@ passed in one launch; nothing is silently omitted. Folders are sent with their
 contents, as LocalSend's own folder picker does.
 
 The leaf's context is a short-lived, single-use token bound to the exact
-selection and each item's device, inode and type. Activation rejects a stale
-token, a changed selection, or an item that was replaced, removed or became
-unreadable, and consumes the token before launching so a lost reply cannot open
-the selection twice.
+selection and each item's identity, size and timestamps. Activation rejects a
+stale token, a changed selection, or an item that was replaced, edited, removed
+or became unreadable, and consumes the token before launching so a lost reply
+cannot open the selection twice.
 
 LocalSend runs in a new session with no access to the provider's protocol
 socket, so stopping or restarting Strata never closes it. The provider waits

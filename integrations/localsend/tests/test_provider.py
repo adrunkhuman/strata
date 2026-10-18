@@ -92,13 +92,16 @@ class ProviderTests(unittest.TestCase):
         reply = self.provider.handle(self.request(background=True))
         self.assertEqual(reply["actions"], [])
 
-    def test_replaced_removed_and_symlinked_items_are_rejected(self):
-        for operation in ("replace", "remove", "symlink"):
+    def test_replaced_edited_removed_and_symlinked_items_are_rejected(self):
+        for operation in ("replace", "edit", "remove", "symlink"):
             with self.subTest(operation=operation):
                 self.file.unlink(missing_ok=True)
                 self.file.write_text("original")
                 leaf = self.menu()[0]
-                self.file.unlink()
+                if operation == "edit":
+                    self.file.write_text("edited document")
+                else:
+                    self.file.unlink()
                 if operation == "replace":
                     self.file.write_text("replacement")
                 elif operation == "symlink":

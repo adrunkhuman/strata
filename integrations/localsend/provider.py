@@ -91,7 +91,7 @@ def identities(paths):
         s = os.stat(path, follow_symlinks=False)
         if not (stat.S_ISREG(s.st_mode) or stat.S_ISDIR(s.st_mode)):
             raise ValueError("not a regular file or folder")
-        result.append((s.st_dev, s.st_ino, stat.S_IFMT(s.st_mode)))
+        result.append((s.st_dev, s.st_ino, s.st_mode, s.st_size, s.st_mtime_ns, s.st_ctime_ns))
     return tuple(result)
 
 
