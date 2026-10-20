@@ -36,9 +36,10 @@ const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 /// installed one, so a bounded page is safe: an update this page cannot
 /// reach is older than one it can.
 const PREVIEW_PAGE_SIZE: u32 = 30;
-/// GitHub's largest page. Releases beyond it are far older than the first signed
-/// update manifest, so the release picker could not install them anyway.
+/// GitHub's largest page.
 const RELEASE_LIST_PAGE_SIZE: u32 = 100;
+/// Keeps one menu open well inside GitHub's unauthenticated rate limit.
+const RELEASE_LIST_MAX_PAGES: u32 = 5;
 
 impl BuildKind {
     /// The build kind's name in the app language, for display.
@@ -84,7 +85,6 @@ pub enum UpdateCheck {
     Failed(String),
 }
 
-/// A release the user may pick to install, regardless of the installed version.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReleaseChoice {
     pub release: ReleaseMetadata,
@@ -447,13 +447,36 @@ fn release_choices(channel: Channel, releases: &[ReleaseResponse]) -> Vec<Releas
         .collect()
 }
 
-/// Lists every release the picker may offer. Unlike the update check, a
-/// Stable user's list is enumerated from all releases: GitHub has no
-/// final-only listing, so prereleases are dropped by [`is_eligible`] alone.
+/// Unlike the update check, Stable also enumerates every release: GitHub has
+/// no final-only listing, so [`is_eligible`] alone drops the prereleases.
 fn fetch_release_choices(channel: Channel) -> Result<Vec<ReleaseChoice>, String> {
-    request_json::<Vec<ReleaseResponse>>(&format!("{API_ROOT}?per_page={RELEASE_LIST_PAGE_SIZE}"))
-        .map(|releases| release_choices(channel, &releases))
-        .map_err(|error| request_error_message(&error))
+    signed_release_pages(|page| {
+        request_json::<Vec<ReleaseResponse>>(&format!(
+            "{API_ROOT}?per_page={RELEASE_LIST_PAGE_SIZE}&page={page}"
+        ))
+    })
+    .map(|releases| release_choices(channel, &releases))
+    .map_err(|error| request_error_message(&error))
+}
+
+/// Pages through releases, newest first, until a page ends on a release
+/// published before signed manifests existed: everything after it is older still.
+fn signed_release_pages<E>(
+    mut fetch_page: impl FnMut(u32) -> Result<Vec<ReleaseResponse>, E>,
+) -> Result<Vec<ReleaseResponse>, E> {
+    let mut releases = Vec::new();
+    for page in 1..=RELEASE_LIST_MAX_PAGES {
+        let batch = fetch_page(page)?;
+        let last = batch.len() < RELEASE_LIST_PAGE_SIZE as usize
+            || batch
+                .last()
+                .is_none_or(|release| !has_update_manifest(release));
+        releases.extend(batch);
+        if last {
+            break;
+        }
+    }
+    Ok(releases)
 }
 
 /// The pure selection step of [`check_for_updates`], split out so it can be

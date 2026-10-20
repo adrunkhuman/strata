@@ -2483,7 +2483,6 @@ enum UpdateDialogPhase {
     Installed,
 }
 
-/// Why the update dialog is offering a release.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum UpdateOffer {
     /// The newest release on the channel, found by an update check.

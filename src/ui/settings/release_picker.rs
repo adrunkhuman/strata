@@ -122,7 +122,10 @@ pub(super) fn release_picker(
                     return glib::ControlFlow::Break;
                 }
                 let result = match receiver.try_recv() {
-                    Ok(result) => result,
+                    Ok(result) => result.map_err(|message| {
+                        rust_i18n::t!("Couldn't load releases: %{message}", message = message)
+                            .into_owned()
+                    }),
                     Err(TryRecvError::Empty) => return glib::ControlFlow::Continue,
                     Err(TryRecvError::Disconnected) => {
                         Err(crate::i18n::tr("Couldn't load releases"))
@@ -136,10 +139,7 @@ pub(super) fn release_picker(
                         listed.set(Some(channel));
                         fill_menu(&menu, &button, choices, &source, &install_guard);
                     }
-                    Err(message) => show_message(
-                        &menu,
-                        &rust_i18n::t!("Couldn't load releases: %{message}", message = message),
-                    ),
+                    Err(message) => show_message(&menu, &message),
                 }
                 glib::ControlFlow::Break
             });

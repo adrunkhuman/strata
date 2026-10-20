@@ -6,12 +6,12 @@ use std::{
 };
 
 use super::{
-    BuildKind, CHECK_INTERVAL, Channel, DocumentBlock, NetworkError, ReleaseResponse,
-    ReleaseSummary, UpdateCheck, UpdateCheckCache, Version, archive_name, cache_is_fresh,
-    cached_releases, check_from_cache, fetch_package_update, from_cached_release,
-    package_update_from_response, release_choices, release_metadata, release_page_url,
-    request_error_message, request_json_conditional, select_cached_update, select_update,
-    to_cached_release, to_release_summary,
+    BuildKind, CHECK_INTERVAL, Channel, DocumentBlock, NetworkError, RELEASE_LIST_MAX_PAGES,
+    RELEASE_LIST_PAGE_SIZE, ReleaseResponse, ReleaseSummary, UpdateCheck, UpdateCheckCache,
+    Version, archive_name, cache_is_fresh, cached_releases, check_from_cache, fetch_package_update,
+    from_cached_release, package_update_from_response, release_choices, release_metadata,
+    release_page_url, request_error_message, request_json_conditional, select_cached_update,
+    select_update, signed_release_pages, to_cached_release, to_release_summary,
 };
 
 fn version(tag: &str) -> Version {
@@ -293,6 +293,58 @@ fn release_choices_list_only_signed_releases_with_their_install_requests() {
         format!("https://example.invalid/{}", archive_name("0.4.1"))
     );
     assert_eq!(older.release.kind, BuildKind::Stable);
+}
+
+#[test]
+fn release_pages_stop_at_unsigned_history_short_pages_errors_or_the_page_cap() {
+    let full = RELEASE_LIST_PAGE_SIZE as usize;
+    let page = |len: usize, signed: bool| {
+        let manifests = if signed {
+            r#"{"name":"strata-update-manifest.json","browser_download_url":"https://example.invalid/m"},
+               {"name":"strata-update-manifest.signatures.json","browser_download_url":"https://example.invalid/s"}"#
+        } else {
+            ""
+        };
+        let release = format!(
+            r#"{{"tag_name":"v0.1.0","draft":false,"prerelease":false,"assets":[{manifests}]}}"#
+        );
+        release_response_list(&format!("[{}]", vec![release; len].join(",")))
+    };
+    let max_pages = RELEASE_LIST_MAX_PAGES as usize;
+    for (name, pages, expected) in [
+        (
+            "short page",
+            vec![Ok((full, true)), Ok((3, true))],
+            Ok((2, full + 3)),
+        ),
+        (
+            "unsigned history",
+            vec![Ok((full, true)), Ok((full, false))],
+            Ok((2, 2 * full)),
+        ),
+        (
+            "page cap",
+            vec![Ok((full, true)); max_pages + 1],
+            Ok((max_pages, max_pages * full)),
+        ),
+        (
+            "error",
+            vec![Ok((full, true)), Err("rate limited")],
+            Err("rate limited"),
+        ),
+    ] {
+        let mut fetched = 0;
+        let result = signed_release_pages(|number| {
+            fetched += 1;
+            assert_eq!(number as usize, fetched, "{name}");
+            pages[fetched - 1].map(|(len, signed)| page(len, signed))
+        });
+        assert_eq!(
+            result.map(|releases| (fetched, releases.len())),
+            expected,
+            "{name}"
+        );
+    }
 }
 
 #[test]
