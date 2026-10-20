@@ -9,9 +9,9 @@ use super::{
     BuildKind, CHECK_INTERVAL, Channel, DocumentBlock, NetworkError, ReleaseResponse,
     ReleaseSummary, UpdateCheck, UpdateCheckCache, Version, archive_name, cache_is_fresh,
     cached_releases, check_from_cache, fetch_package_update, from_cached_release,
-    package_update_from_response, release_metadata, release_page_url, request_error_message,
-    request_json_conditional, select_cached_update, select_update, to_cached_release,
-    to_release_summary,
+    package_update_from_response, release_choices, release_metadata, release_page_url,
+    request_error_message, request_json_conditional, select_cached_update, select_update,
+    to_cached_release, to_release_summary,
 };
 
 fn version(tag: &str) -> Version {
@@ -258,6 +258,41 @@ fn preview_feed_skips_drafts_unparsable_tags_and_assetless_releases() {
         UpdateCheck::Available { release, .. } => assert_eq!(release.tag, "v0.5.0"),
         other => panic!("expected the newest eligible release, got {other:?}"),
     }
+}
+
+#[test]
+fn release_choices_list_only_signed_releases_with_their_install_requests() {
+    let signed = |version: &str, prerelease: bool| {
+        let archive = matching_asset_json(version);
+        format!(
+            r#"{{"tag_name":"v{version}","draft":false,"prerelease":{prerelease},"assets":[{archive},
+              {{"name":"strata-update-manifest.json","browser_download_url":"https://example.invalid/m"}},
+              {{"name":"strata-update-manifest.signatures.json","browser_download_url":"https://example.invalid/s"}}]}}"#
+        )
+    };
+    let unsigned = matching_asset_json("0.4.0");
+    let responses = release_response_list(&format!(
+        r#"[{}, {}, {{"tag_name":"v0.4.0","draft":false,"prerelease":false,"assets":[{unsigned}]}}, {}]"#,
+        signed("0.6.0-nightly.20260901", true),
+        signed("0.5.0", false),
+        signed("0.4.1", false),
+    ));
+
+    let choices = release_choices(Channel::Nightly, &responses);
+
+    let tags: Vec<_> = choices
+        .iter()
+        .map(|choice| choice.release.tag.as_str())
+        .collect();
+    assert_eq!(tags, ["v0.6.0-nightly.20260901", "v0.5.0", "v0.4.1"]);
+    let older = &choices[2];
+    assert_eq!(older.install.tag, "v0.4.1");
+    assert_eq!(older.install.asset_name, archive_name("0.4.1"));
+    assert_eq!(
+        older.install.advertised_url,
+        format!("https://example.invalid/{}", archive_name("0.4.1"))
+    );
+    assert_eq!(older.release.kind, BuildKind::Stable);
 }
 
 #[test]
