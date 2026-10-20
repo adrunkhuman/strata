@@ -380,6 +380,7 @@ fn stepper(min: u32, max: u32, step: u32) -> gtk::SpinButton {
         }
     }
     control.set_update_policy(gtk::SpinButtonUpdatePolicy::IfValid);
+    crate::assets::use_bundled_spin_icons(&control);
     control.add_css_class("form-control");
     control.add_css_class("text-size-control");
     control
