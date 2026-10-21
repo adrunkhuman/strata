@@ -5,7 +5,7 @@ import pytest
 from gi.repository import Atspi
 
 from harness.interaction import MODIFIER_KEYSYMS
-from harness.keyboard_layout import QWERTZ
+from harness.keyboard_layout import QWERTZ, RUSSIAN
 from harness.modes import ALL_MODES
 
 
@@ -134,6 +134,27 @@ def test_tabs_keep_locations_and_support_numbered_shortcuts(strata, keyboard_lay
             selected_tab(strata, name)
         strata.keyboard.press(f"ctrl+shift+{order.index('pictures') + 1}")
         selected_tab(strata, "pictures")
+    strata.keyboard.press("ctrl+w")
+    selected_tab(strata, "archive")
+    strata.keyboard.press("ctrl+w")
+    strata.wait_for_selection(["todo.txt"], root)
+    strata.keyboard.press("ctrl+l")
+    strata.wait(
+        lambda: strata.window.find(role="text", name="Location (Ctrl+L)", states={"focused"}),
+        "location editor before reopening a tab",
+    )
+    strata.keyboard.press("ctrl+shift+t")
+    selected_tab(strata, "archive")
+    strata.wait_for_directory("archive")
+    with keyboard_layout(RUSSIAN):
+        strata.keyboard.press("ctrl+shift+t")
+        selected_tab(strata, "pictures")
+        strata.wait_for_directory("pictures")
+    strata.keyboard.press("ctrl+shift+t")
+    assert len(strata.window.find_all(role="page tab")) == 3
+    for index, name in enumerate([root, "archive", "pictures"], start=1):
+        strata.keyboard.press(f"ctrl+shift+{index}")
+        selected_tab(strata, name)
     strata.keyboard.press("ctrl+w")
     selected_tab(strata, "archive")
     strata.keyboard.press("ctrl+w")
