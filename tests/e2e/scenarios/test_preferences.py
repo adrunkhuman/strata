@@ -2,6 +2,7 @@
 """Saved preferences and live controls share one application-wide state."""
 
 import subprocess
+import tomllib
 
 import pytest
 
@@ -210,3 +211,55 @@ def test_unsaved_changes_show_one_notice_and_return_focus(strata):
     strata.wait(lambda: not toggle.has_state("checked"), "the second change to apply")
     assert notice() is None, "one notice per failure streak"
     assert settings.is_dir()
+
+
+@pytest.mark.preferences(browser_mode="list")
+@pytest.mark.parametrize("source,left_target,reordered", [
+    ("Mode", "Size", ["name", "size", "mode", "type", "modified"]),
+    ("Name", "Mode", ["mode", "size", "name", "type", "modified"]),
+])
+def test_list_column_drag_commits_only_on_release(strata, source, left_target, reordered):
+    original = ["name", "mode", "size", "type", "modified"]
+    listing = strata.entry_names()
+
+    def order():
+        settings = tomllib.loads(strata.environment.settings_path.read_text())
+        return settings.get("list_column_order", original)
+
+    def heading(name):
+        return strata.wait(
+            lambda: strata.window.find(role="button", name=name),
+            f"{name} column heading",
+        )
+
+    def start_drag(target, fraction):
+        start = heading(source).screen_bounds().center
+        bounds = heading(target).screen_bounds()
+        end = (int(bounds.x + bounds.width * fraction), bounds.center[1])
+        strata.pointer.drag_points(start, end, release=False)
+        strata.settle(heading(source))
+        return end
+
+    try:
+        start_drag("Size", 0.8)
+        assert order() == original, "holding a column must not persist a reorder"
+    finally:
+        strata.pointer.connection.button(1, False)
+    strata.wait(lambda: order() == reordered, "column reorder to commit on release")
+
+    try:
+        end = start_drag(left_target, 0.2)
+        assert order() == reordered
+        strata.pointer.move_to(end[0], end[1] + 100)
+    finally:
+        strata.pointer.connection.button(1, False)
+    strata.settle(heading(source))
+    assert order() == reordered, "releasing outside the headings cancels the reorder"
+
+    try:
+        start_drag(left_target, 0.2)
+        assert order() == reordered
+    finally:
+        strata.pointer.connection.button(1, False)
+    strata.wait(lambda: order() == original, "the next drag to commit in the other direction")
+    assert strata.entry_names() == listing, "dragging a sortable heading must not change sorting"
